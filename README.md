@@ -17,9 +17,9 @@ Many conventional seismic random-noise attenuation methods work best when the no
 
 The key idea in Cheng, Chen, and Sacchi (2015) is that, for each frequency slice, coherent seismic events can often be represented by a low-rank matrix, while erratic noise is better represented as a sparse matrix. Each f-x-y slice is therefore modeled as:
 
-```text
-D(f) = L(f) + S(f)
-```
+$$
+\mathbf{D}(f) = \mathbf{L}(f) + \mathbf{S}(f)
+$$
 
 where:
 
@@ -33,9 +33,9 @@ where:
 
 The input data are stored as `[nt, nx, ny]`. The workflows first apply an FFT along the time axis, transforming the data from the t-x-y domain to the f-x-y domain. For each positive frequency `f`, the code extracts a spatial matrix:
 
-```text
-D_f = D(f, :, :)
-```
+$$
+\mathbf{D}_f = \mathbf{D}(f, :, :)
+$$
 
 Two-dimensional input `[nt, nx]` is internally reshaped to `[nt, nx, 1]`. Three-dimensional input directly forms `nx` by `ny` frequency slices.
 
@@ -43,15 +43,18 @@ Two-dimensional input `[nt, nx]` is internally reshaped to `[nt, nx, 1]`. Three-
 
 Conventional f-x-y eigenimage filtering applies SVD to each frequency slice:
 
-```text
-D_f = U Sigma V*
-```
+$$
+\mathbf{D}_f = \mathbf{U}\boldsymbol{\Sigma}\mathbf{V}^{*}
+$$
 
 and keeps only the first `r` singular values:
 
-```text
-L_f = U(:,1:r) Sigma(1:r,1:r) V(:,1:r)*
-```
+$$
+\mathbf{L}_f =
+\mathbf{U}_{(:,1:r)}
+\boldsymbol{\Sigma}_{(1:r,1:r)}
+\mathbf{V}_{(:,1:r)}^{*}
+$$
 
 This is effective for relatively stationary random noise. However, when a few traces or local spatial samples contain strong outliers, the dominant singular vectors can be distorted. The repository therefore keeps PCA/eigenimage filtering as a baseline for comparison with RPCA.
 
@@ -59,15 +62,19 @@ This is effective for relatively stationary random noise. However, when a few tr
 
 RPCA is implemented through the Principal Component Pursuit formulation:
 
-```text
-minimize    ||L||_* + lambda ||S||_1
-subject to  D = L + S
-```
+$$
+\begin{aligned}
+\min_{\mathbf{L},\mathbf{S}}\quad
+& \lVert \mathbf{L} \rVert_* + \lambda \lVert \mathbf{S} \rVert_1 \\
+\text{subject to}\quad
+& \mathbf{D} = \mathbf{L} + \mathbf{S}.
+\end{aligned}
+$$
 
 where:
 
-- `||L||_*` is the nuclear norm, the sum of singular values, which promotes a low-rank `L`;
-- `||S||_1` is the element-wise L1 norm, which promotes a sparse `S`;
+- $\lVert \mathbf{L} \rVert_*$ is the nuclear norm, the sum of singular values, which promotes a low-rank `L`;
+- $\lVert \mathbf{S} \rVert_1$ is the element-wise L1 norm, which promotes a sparse `S`;
 - `lambda` controls how much energy is assigned to the sparse noise component.
 
 The MATLAB code solves this problem with an inexact augmented Lagrange multiplier (IALM) style iteration. Each iteration mainly applies two thresholding operations:
@@ -143,9 +150,15 @@ The motivation is that low frequencies are often stronger and more coherent, whi
 
 When `INPUT_MODE = 'synthetic'`, the script has access to the clean reference and can compute:
 
-```text
-Q = 10 log10(||clean||_F^2 / ||estimate - clean||_F^2)
-```
+$$
+Q =
+10 \log_{10}
+\frac{
+\lVert \mathbf{d}_{\mathrm{clean}} \rVert_F^2
+}{
+\lVert \mathbf{d}_{\mathrm{estimate}} - \mathbf{d}_{\mathrm{clean}} \rVert_F^2
+}
+$$
 
 It can also scan `lambda` and rank parameters automatically. For real data, where no clean reference is available, Q metrics are skipped and QC relies on wiggle plots, image displays, removed-noise panels, rank statistics, iteration counts, and residual diagnostics.
 
