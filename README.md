@@ -1,93 +1,93 @@
 # Robust PCA Seismic Denoising
 
-这个仓库包含两份 MATLAB 单文件脚本，用于复现和扩展 Cheng, Chen & Sacchi (2015) 提出的 f-x-y 域 Robust PCA / Principal Component Pursuit 思路，目标是压制地震数据中的 erratic noise，也就是空间上离群、幅值可能很强、统计分布明显非高斯的随机强噪声。
+This repository contains two single-file MATLAB workflows for reproducing and extending the f-x-y domain Robust Principal Component Analysis (RPCA) / Principal Component Pursuit (PCP) idea used by Cheng, Chen, and Sacchi (2015). The goal is to attenuate erratic noise in seismic data, especially sparse, high-amplitude, non-Gaussian outliers that contaminate only part of the spatial domain.
 
-## 论文来源
+## Reference Paper
 
-本仓库主要参考的原文是：
+The main reference for this repository is:
 
 > Cheng, J., Chen, K., & Sacchi, M. D. (2015). **Application of Robust Principal Component Analysis (RPCA) to suppress erratic noise in seismic records**. *SEG Technical Program Expanded Abstracts 2015*, 4646-4651.
 
 - DOI: <https://doi.org/10.1190/segam2015-5869427.1>
 - PDF: <https://saig.physics.ualberta.ca/lib/exe/fetch.php?media=publications%3Aconfpro%3Aseg2015_cheng_2.pdf>
 
-## 背景与目标
+## Motivation
 
-常规地震随机噪声压制方法通常假设噪声比较接近高斯分布，或者能在某个变换域中被平滑地削弱。但 field data 中经常会出现 erratic noise，例如坏道、脉冲干扰、采集系统异常、局部强能量污染等。这类噪声的特点是幅值大、位置稀疏、分布不规则，因此普通最小二乘类方法和固定 rank 的 f-x-y PCA/eigenimage 滤波容易受到离群值影响。
+Many conventional seismic random-noise attenuation methods work best when the noise is approximately Gaussian or can be smoothly suppressed in a transform domain. Field data, however, often contain erratic noise: dead or bad traces, impulsive interference, acquisition-system artifacts, or locally strong contamination. This type of noise is usually sparse in space but can have very large amplitude, so least-squares methods and fixed-rank f-x-y PCA/eigenimage filters can be strongly biased by these outliers.
 
-Cheng, Chen & Sacchi 的核心想法是：在固定频率切片上，有效地震信号由于空间相干性，往往可以用低秩矩阵近似；erratic noise 在空间上只污染部分位置，适合用稀疏矩阵表示。因此可以把每个频率切片分解为：
+The key idea in Cheng, Chen, and Sacchi (2015) is that, for each frequency slice, coherent seismic events can often be represented by a low-rank matrix, while erratic noise is better represented as a sparse matrix. Each f-x-y slice is therefore modeled as:
 
 ```text
 D(f) = L(f) + S(f)
 ```
 
-其中：
+where:
 
-- `D(f)` 是某个频率下的输入 f-x-y 切片；
-- `L(f)` 是低秩部分，对应相干地震有效信号；
-- `S(f)` 是稀疏部分，对应 erratic noise 或强离群污染。
+- `D(f)` is the input f-x-y slice at frequency `f`;
+- `L(f)` is the low-rank component, interpreted as coherent seismic signal;
+- `S(f)` is the sparse component, interpreted as erratic noise or strong outlier contamination.
 
-## 算法原理
+## Algorithm Overview
 
-### f-x-y 频率切片
+### f-x-y Frequency Slices
 
-输入数据一般写成 `[nt, nx, ny]`。代码先沿时间轴做 FFT，把数据从 t-x-y 域变到 f-x-y 域。对每一个正频率 `f`，取出一个空间矩阵：
+The input data are stored as `[nt, nx, ny]`. The workflows first apply an FFT along the time axis, transforming the data from the t-x-y domain to the f-x-y domain. For each positive frequency `f`, the code extracts a spatial matrix:
 
 ```text
 D_f = D(f, :, :)
 ```
 
-二维数据 `[nt, nx]` 会被当成 `[nt, nx, 1]` 处理；三维数据则直接形成 `nx` by `ny` 的频率切片。
+Two-dimensional input `[nt, nx]` is internally reshaped to `[nt, nx, 1]`. Three-dimensional input directly forms `nx` by `ny` frequency slices.
 
-### PCA/eigenimage 基线
+### PCA / Eigenimage Baseline
 
-传统 f-x-y eigenimage filtering 对每个频率切片做 SVD：
+Conventional f-x-y eigenimage filtering applies SVD to each frequency slice:
 
 ```text
 D_f = U Sigma V*
 ```
 
-然后只保留前 `r` 个奇异值：
+and keeps only the first `r` singular values:
 
 ```text
 L_f = U(:,1:r) Sigma(1:r,1:r) V(:,1:r)*
 ```
 
-这种方法对较平稳的随机噪声有效，但当某些道或局部位置被强离群噪声污染时，SVD 的主成分也会被拉偏。因此本仓库保留 PCA 作为 baseline，用来和 RPCA 结果对比。
+This is effective for relatively stationary random noise. However, when a few traces or local spatial samples contain strong outliers, the dominant singular vectors can be distorted. The repository therefore keeps PCA/eigenimage filtering as a baseline for comparison with RPCA.
 
-### RPCA / PCP 分解
+### RPCA / PCP Decomposition
 
-RPCA 使用 Principal Component Pursuit 的凸优化形式：
+RPCA is implemented through the Principal Component Pursuit formulation:
 
 ```text
 minimize    ||L||_* + lambda ||S||_1
 subject to  D = L + S
 ```
 
-这里：
+where:
 
-- `||L||_*` 是 nuclear norm，即奇异值之和，用来鼓励 `L` 低秩；
-- `||S||_1` 是逐元素 L1 范数，用来鼓励 `S` 稀疏；
-- `lambda` 控制多少能量被分到稀疏噪声项中。
+- `||L||_*` is the nuclear norm, the sum of singular values, which promotes a low-rank `L`;
+- `||S||_1` is the element-wise L1 norm, which promotes a sparse `S`;
+- `lambda` controls how much energy is assigned to the sparse noise component.
 
-代码中使用 inexact augmented Lagrange multiplier / IALM 思路迭代求解。每次迭代主要包含两个阈值操作：
+The MATLAB code solves this problem with an inexact augmented Lagrange multiplier (IALM) style iteration. Each iteration mainly applies two thresholding operations:
 
-- 对奇异值做 soft-thresholding，得到低秩矩阵 `L`；
-- 对矩阵元素做 soft-thresholding，得到稀疏矩阵 `S`。
+- singular-value soft-thresholding to estimate the low-rank matrix `L`;
+- element-wise soft-thresholding to estimate the sparse matrix `S`.
 
-求得每个频率切片的 `L_f` 后，代码按共轭对称关系补齐负频率，再做 inverse FFT 回到时间域。最终：
+After estimating `L_f` for each positive frequency, the workflows restore the negative-frequency side using conjugate symmetry and then apply an inverse FFT back to the time domain. The main outputs are:
 
-- `rpca_denoised` 是低秩重建结果；
-- `rpca_sparse_noise` 是 RPCA 分离出的稀疏噪声；
-- `removed_noise = noisy - rpca_denoised` 是工程上更直观的去除量。
+- `rpca_denoised`: the low-rank reconstruction;
+- `rpca_sparse_noise`: the sparse noise separated by RPCA;
+- `removed_noise = noisy - rpca_denoised`: the total removed component, which is often useful for QC.
 
-## 本仓库的做法
+## What This Repository Adds
 
-原文强调在 f-x-y 域用 RPCA 把低秩有效信号和稀疏 erratic noise 分开。本仓库在这个主线基础上做了几个工程化处理，目的是让脚本更稳、更容易用于 synthetic test 和真实数据试跑。
+The reference paper focuses on separating low-rank coherent signal and sparse erratic noise in the f-x-y domain. This repository follows that core idea and adds several practical details that make the workflows more stable for synthetic tests and easier to apply to real data.
 
-### 1. 平滑频率 taper
+### 1. Smooth Spectral Taper
 
-代码没有使用硬的频率截断，而是用 raised-cosine spectral taper：
+The workflows use a raised-cosine spectral taper instead of hard frequency cutoffs:
 
 ```matlab
 freq_taper.flow_stop  = 0;
@@ -96,26 +96,26 @@ freq_taper.fhigh_pass = 45;
 freq_taper.fhigh_stop = 75;
 ```
 
-`flow_pass` 到 `fhigh_pass` 是完整保留频带，低频和高频边界使用余弦过渡。这样做可以减少硬截频带来的 Gibbs/ringing artifact。
+Frequencies between `flow_pass` and `fhigh_pass` are fully preserved. The low- and high-frequency edges are tapered smoothly, which helps reduce Gibbs/ringing artifacts caused by abrupt truncation.
 
-### 2. 时间轴补零
+### 2. Time-Axis Zero Padding
 
-FFT 前使用 `pad_factor` 对时间轴补零，使频率采样更平滑，降低 inverse FFT 后的循环泄漏和边界振铃。
+Before the FFT, the workflows optionally zero-pad the time axis using `pad_factor`. This gives smoother frequency sampling and reduces circular leakage and edge ringing after inverse FFT.
 
-### 3. RPCA 后 rank projection
+### 3. Rank Projection After RPCA
 
-纯 PCP 已经能把 `D = L + S` 分开，但真实地震数据中还会有较弱的非相干噪声残留。本仓库在 RPCA 之后可选地对 `L` 再做一次 rank projection：
+Pure PCP already separates `D = L + S`, but real data may still contain weak incoherent residual noise in `L`. The engineering workflow can optionally apply rank projection after RPCA:
 
 ```matlab
 opts.use_rank_projection = true;
 opts.rank_mode = 'adaptive';
 ```
 
-这不是原始 PCP 的必要步骤，而是一个实用增强：先用 RPCA 去掉强离群噪声，再用低秩投影压制残余随机能量。
+This is not required by the original PCP formulation. It is a practical enhancement: RPCA first removes strong sparse outliers, and the subsequent low-rank projection suppresses weaker residual random energy.
 
-### 4. 滑动时间窗 overlap-add
+### 4. Sliding-Window Overlap-Add
 
-`rpca_engineering_workflow.m` 支持滑动时间窗：
+`rpca_engineering_workflow.m` supports sliding-window processing:
 
 ```matlab
 USE_SLIDING_WINDOW = true;
@@ -123,11 +123,11 @@ win_length_s = 0.50;
 win_overlap  = 0.50;
 ```
 
-每个时间窗内单独做 f-x-y RPCA，然后用正弦窗权重 overlap-add 拼回完整时间轴。这样可以缓解长记录中非平稳事件、频谱变化和局部噪声差异带来的问题。
+Each time window is processed independently in the f-x-y domain, and the final result is reconstructed with sine-window overlap-add weights. This helps handle nonstationary events, changing spectra, and time-localized noise behavior in longer records.
 
-### 5. 自适应 lambda 和 rank
+### 5. Adaptive Lambda and Rank
 
-工程化脚本支持频率相关的 `lambda(f)` 和 `rank(f)`：
+The engineering workflow supports frequency-dependent `lambda(f)` and `rank(f)`:
 
 ```matlab
 opts.lambda_adaptive = true;
@@ -137,19 +137,19 @@ opts.rank_min = 2;
 opts.rank_max = 7;
 ```
 
-直观上，低频有效信号通常更强、更相干，高频更容易受噪声影响。代码允许不同频率使用不同稀疏惩罚和 rank cap，以减少“一组参数管所有频率”的僵硬感。
+The motivation is that low frequencies are often stronger and more coherent, while high frequencies are more easily contaminated by noise. Allowing the sparse penalty and rank cap to vary with frequency avoids forcing one rigid parameter set on the full bandwidth.
 
-### 6. 合成数据参数扫描
+### 6. Synthetic Parameter Sweep
 
-当 `INPUT_MODE = 'synthetic'` 时，脚本知道 clean reference，可以计算：
+When `INPUT_MODE = 'synthetic'`, the script has access to the clean reference and can compute:
 
 ```text
 Q = 10 log10(||clean||_F^2 / ||estimate - clean||_F^2)
 ```
 
-并自动扫描 `lambda` 和 rank 参数。真实数据没有 clean reference 时，Q 指标会跳过，主要依赖 wiggle、image、removed noise 和 rank/iteration QC。
+It can also scan `lambda` and rank parameters automatically. For real data, where no clean reference is available, Q metrics are skipped and QC relies on wiggle plots, image displays, removed-noise panels, rank statistics, iteration counts, and residual diagnostics.
 
-## 仓库结构
+## Repository Structure
 
 ```text
 .
@@ -160,44 +160,44 @@ Q = 10 log10(||clean||_F^2 / ||estimate - clean||_F^2)
 └── README.md
 ```
 
-## 脚本说明
+## MATLAB Scripts
 
-| 脚本 | 用途 |
+| Script | Purpose |
 | --- | --- |
-| `src/rpca_tapered_reproduction.m` | 较简洁的 tapered f-x-y RPCA/PCP 复现实验，包含合成数据、平滑频率 taper、PCA 基线、RPCA 和参数扫描。适合理解算法主线。 |
-| `src/rpca_engineering_workflow.m` | 工程化入口，支持滑动时间窗 overlap-add、自适应频率相关 lambda、自适应 rank 投影、MAT 输入和可选 SEG-Y I/O 钩子。适合真实数据试跑。 |
+| `src/rpca_tapered_reproduction.m` | A compact tapered f-x-y RPCA/PCP reproduction workflow. It includes synthetic data generation, smooth spectral tapering, a PCA baseline, RPCA, and a synthetic parameter sweep. This is the best entry point for understanding the main algorithm. |
+| `src/rpca_engineering_workflow.m` | A more practical workflow with sliding-window overlap-add, adaptive frequency-dependent lambda, adaptive rank projection, MAT input, and optional SEG-Y I/O hooks. This is the preferred entry point for testing real data. |
 
-## 环境要求
+## Requirements
 
-- MATLAB，建议 R2018b 或更新版本。
-- 不需要额外工具箱即可运行合成数据示例。
-- SEG-Y 输入/输出依赖当前 MATLAB 环境中可用的 `segyread` / `segywrite`。
+- MATLAB, preferably R2018b or newer.
+- No extra toolbox is required for the default synthetic examples.
+- SEG-Y input/output depends on `segyread` / `segywrite` support in your MATLAB environment.
 
-## 快速开始
+## Quick Start
 
-在 MATLAB 中把当前目录切到仓库根目录，然后运行工程化示例：
+In MATLAB, change to the repository root and run the engineering workflow:
 
 ```matlab
 cd('path/to/Robust PCA')
 run('src/rpca_engineering_workflow.m')
 ```
 
-如果只想跑较轻量的复现实验：
+For the lighter reproduction workflow:
 
 ```matlab
 run('src/rpca_tapered_reproduction.m')
 ```
 
-默认配置会生成合成 3D 地震数据，加入高斯噪声和 erratic noise，然后比较以下结果：
+The default configuration generates synthetic 3D seismic data, adds Gaussian noise and erratic noise, and compares:
 
-- smooth spectral taper reconstruction
-- f-x-y PCA/eigenimage filtering
-- enhanced f-x-y RPCA/PCP denoising
-- RPCA removed noise / sparse noise QC
+- smooth spectral taper reconstruction;
+- f-x-y PCA/eigenimage filtering;
+- enhanced f-x-y RPCA/PCP denoising;
+- RPCA sparse noise and removed-noise QC.
 
-## 使用自己的 MAT 数据
+## Using Your Own MAT Data
 
-工程化脚本中修改这些参数：
+In the engineering workflow, modify:
 
 ```matlab
 INPUT_MODE = 'mat';
@@ -206,35 +206,35 @@ DATA_VAR_NAME = 'data';
 dt = 0.002;
 ```
 
-`DATA_VAR_NAME` 对应的数组应为：
+The array referenced by `DATA_VAR_NAME` should be:
 
-- `[nt, nx]`：二维道集
-- `[nt, nx, ny]`：三维数据体或多个 y slice
+- `[nt, nx]`: a 2D gather;
+- `[nt, nx, ny]`: a 3D volume or a set of y slices.
 
-脚本会自动把二维输入 reshape 为 `[nt, nx, 1]`。
+Two-dimensional input is automatically reshaped to `[nt, nx, 1]`.
 
-## 关键参数
+## Key Parameters
 
-- `freq_taper`：平滑频率 taper，避免硬截频造成的 Gibbs/ringing artifact。
-- `pad_factor`：FFT 时间轴补零倍数。
-- `USE_SLIDING_WINDOW`、`win_length_s`、`win_overlap`：滑动时间窗处理参数。
-- `opts.lambda_scale`：RPCA/PCP 稀疏项权重基准。
-- `opts.lambda_adaptive`：是否启用频率相关 lambda。
-- `opts.use_rank_projection`、`opts.rank_mode`：RPCA 后的 rank 投影策略。
-- `DO_SYNTHETIC_SWEEP`：合成数据上的参数扫描开关；真实数据建议关闭。
+- `freq_taper`: smooth spectral taper used to avoid Gibbs/ringing artifacts from hard frequency cutoffs.
+- `pad_factor`: zero-padding factor along the time axis before FFT.
+- `USE_SLIDING_WINDOW`, `win_length_s`, `win_overlap`: sliding-window processing controls.
+- `opts.lambda_scale`: base sparse penalty for RPCA/PCP.
+- `opts.lambda_adaptive`: enables frequency-dependent lambda.
+- `opts.use_rank_projection`, `opts.rank_mode`: low-rank projection strategy after RPCA.
+- `DO_SYNTHETIC_SWEEP`: parameter sweep switch for synthetic data; recommended to disable for real data.
 
-## 输出
+## Outputs
 
-默认会保存 MATLAB 结果文件：
+By default, the workflows save MATLAB result files:
 
 - `rpca_tapered_reproduction_results.mat`
 - `rpca_engineering_workflow_results.mat`
 
-这些结果文件、SEG-Y 文件和大型 MAT 数据默认不会进入 Git 版本控制。需要发布示例数据时，建议单独准备小型匿名样例，并在 `.gitignore` 中显式放行。
+These result files, SEG-Y files, and large MAT data products are ignored by Git by default. If you want to publish example data, prepare a small anonymized sample and explicitly allow it in `.gitignore`.
 
-## 注意事项
+## Notes
 
-- 本仓库是研究复现和工程试验脚本，不是对原文结果的逐图逐数值完全复刻。
-- 合成数据实验可以计算 `Q_full` 和 `Q_tapered_ref` 指标；真实数据没有 clean reference 时会跳过 Q 指标。
-- `rpca_engineering_workflow.m` 更适合真实数据流程；`rpca_tapered_reproduction.m` 更适合算法对照和参数理解。
-- 单文件脚本保留了局部函数，方便直接运行和迁移。如果后续项目继续扩大，可以再拆分为 `functions/` 或 MATLAB package。
+- This repository is a research reproduction and engineering testbed, not a figure-by-figure or number-by-number replication of the original paper.
+- Synthetic experiments can compute `Q_full` and `Q_tapered_ref`; real data without a clean reference skip Q metrics.
+- `rpca_engineering_workflow.m` is better suited for real-data workflows, while `rpca_tapered_reproduction.m` is better for algorithm comparison and parameter understanding.
+- The scripts intentionally keep local functions in single MATLAB files so they are easy to run and move. If the project grows, the functions can be split into a `functions/` directory or a MATLAB package.
