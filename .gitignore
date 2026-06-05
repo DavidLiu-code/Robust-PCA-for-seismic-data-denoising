@@ -1,0 +1,21 @@
+# MATLAB editor and cache files
+*.asv
+*.m~
+*.mlx.autosave
+slprj/
+codegen/
+
+# MATLAB generated outputs and large data products
+*.mat
+*.fig
+*.sgy
+*.segy
+*_results.mat
+results/
+data/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
